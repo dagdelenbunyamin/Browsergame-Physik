@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physics Commander: Mission Solar System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #05070a; overflow: hidden; }
+        canvas { cursor: crosshair; }
+        .stats-panel { backdrop-filter: blur(8px); background: rgba(15, 23, 42, 0.8); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .animate-pulse-fast { animation: pulse 0.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    </style>
+</head>
+<body class="text-slate-200 font-sans select-none">
+
+    <div class="fixed inset-0 pointer-events-none flex flex-col p-6 justify-between">
+        
+        <div class="flex justify-between items-start">
+            <div class="stats-panel p-4 rounded-xl border border-slate-700 shadow-2xl pointer-events-auto">
+                <h1 class="text-xl font-black italic text-blue-400 mb-2 tracking-widest">MISSION CONTROL</h1>
+                <div class="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-sm">
+                    <span class="text-slate-500 underline decoration-blue-500/30">Planet:</span> <span id="planet-name" class="text-white font-bold">MOND</span>
+                    <span class="text-slate-500">Gravitation:</span> <span id="val-g" class="text-yellow-400">1.62 m/s²</span>
+                    <span class="text-slate-500">Vert. Speed:</span> <span id="val-vel" class="font-bold">0.00 m/s</span>
+                    <span class="text-slate-500">Treibstoff:</span> 
+                    <div class="w-full bg-slate-800 h-4 rounded-full mt-1 border border-slate-600 overflow-hidden">
+                        <div id="fuel-bar" class="h-full bg-gradient-to-r from-red-500 to-green-500 transition-all duration-100" style="width: 100%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-panel p-4 rounded-xl border border-slate-700 text-right pointer-events-auto">
+                <div class="text-slate-500 text-xs uppercase tracking-tighter italic font-bold">Highscore</div>
+                <div id="val-score" class="text-3xl font-black text-white">0000</div>
+            </div>
+        </div>
+
+        <div id="message-box" class="hidden self-center text-center stats-panel p-8 rounded-2xl border-2 border-blue-500 shadow-[0_0_50px_rgba(59,130,246,0.5)] pointer-events-auto">
+            <h2 id="msg-title" class="text-4xl font-black mb-2 italic">MISSION START</h2>
+            <p id="msg-body" class="text-slate-300 mb-6">Lande sanft auf der Plattform!</p>
+            <button onclick="resetMission()" class="bg-blue-600 hover:bg-blue-400 text-white px-8 py-3 rounded-full font-bold uppercase tracking-widest transition-all transform hover:scale-105 active:scale-95">Start / Retry</button>
+        </div>
+
+        <div class="flex justify-between items-end">
+            <div class="stats-panel p-4 rounded-xl border border-slate-700 text-[10px] font-mono leading-tight opacity-70">
+                <p class="text-blue-400 font-bold mb-1">// LIVE PHYSICS CALCULATIONS</p>
+                <p>F_net = F_thrust - (mass * g)</p>
+                <p>acceleration = F_net / mass</p>
+                <p>velocity += acceleration * dt</p>
+            </div>
+            
+            <div class="text-right text-slate-500 text-[10px] uppercase font-bold tracking-widest">
+                [Space / Arrow Up] Thrust<br>
+                [Left/Right] Rotate (Coming Soon)
+            </div>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const messageBox = document.getElementById('message-box');
+        
+        // Spiel-Konfiguration
+        let levels = [
+            { name: "MOND", g: 1.62, color: "#94a3b8", bg: "#0f172a", scoreReq: 500 },
+            { name: "MARS", g: 3.71, color: "#f87171", bg: "#450a0a", scoreReq: 1500 },
+            { name: "ERDE", g: 9.81, color: "#60a5fa", bg: "#020617", scoreReq: 3000 }
+        ];
+
+        let currentLevelIndex = 0;
+        let score = 0;
+        let particles = [];
+
+        // Physik-Zustand
+        let ship = {
+            x: 0, y: 100, velY: 0, accY: 0, 
+            mass: 1200, fuel: 100, thrustForce: 28000,
+            isThrusting: false, state: 'FLYING' // 'FLYING', 'LANDED', 'CRASHED'
+        };
+
+        function init() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            ship.x = canvas.width / 2;
+            resetMission();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function resetMission() {
+            const lvl = levels[currentLevelIndex];
+            ship.y = 100;
+            ship.velY = 0;
+            ship.fuel = 100;
+            ship.state = 'FLYING';
+            messageBox.classList.add('hidden');
+            document.getElementById('planet-name').innerText = lvl.name;
+            document.getElementById('val-g').innerText = lvl.g + " m/s²";
+        }
+
+        // Partikel-Effekt für das Triebwerk
+        function createParticle(x, y) {
+            return {
+                x, y,
+                vx: (Math.random() - 0.5) * 4,
+                vy: Math.random() * 10 + 5,
+                life: 1.0,
+                color: `hsla(${Math.random() * 30 + 15}, 100%, 50%, 0.8)`
+            };
+        }
+
+        function updatePhysics() {
+            if (ship.state !== 'FLYING') return;
+
+            const lvl = levels[currentLevelIndex];
+            const dt = 1/60;
+
+            // Kräfte
+            let thrust = 0;
+            if (ship.isThrusting && ship.fuel > 0) {
+                thrust = ship.thrustForce;
+                ship.fuel -= 0.15;
+                for(let i=0; i<5; i++) particles.push(createParticle(ship.x, ship.y + 20));
+            }
+
+            const f_gravity = ship.mass * lvl.g;
+            const f_net = thrust - f_gravity;
+            
+            ship.accY = f_net / ship.mass;
+            ship.velY -= ship.accY * dt; // Minus, da y nach unten wächst
+            ship.y += ship.velY * 5; // Skalierung für Optik
+
+            // UI Updates
+            document.getElementById('val-vel').innerText = (ship.velY * -1).toFixed(2) + " m/s";
+            document.getElementById('fuel-bar').style.width = ship.fuel + "%";
+            document.getElementById('val-vel').className = Math.abs(ship.velY) > 3 ? "text-red-500 font-bold animate-pulse-fast" : "text-green-400 font-bold";
+
+            // Boden-Kollision
+            const groundY = canvas.height - 100;
+            if (ship.y >= groundY - 20) {
+                ship.y = groundY - 20;
+                if (Math.abs(ship.velY) < 3) {
+                    win();
+                } else {
+                    explode();
+                }
+            }
+        }
+
+        function win() {
+            ship.state = 'LANDED';
+            score += Math.round(ship.fuel * 10);
+            document.getElementById('val-score').innerText = score.toString().padStart(4, '0');
+            
+            document.getElementById('msg-title').innerText = "ERFOLGREICHE LANDUNG!";
+            document.getElementById('msg-title').className = "text-4xl font-black mb-2 italic text-green-500";
+            document.getElementById('msg-body').innerText = `Treibstoff-Bonus: +${Math.round(ship.fuel * 10)} Punkte.`;
+            
+            if (currentLevelIndex < levels.length - 1) {
+                currentLevelIndex++;
+                document.getElementById('msg-body').innerText += ` Bereit für ${levels[currentLevelIndex].name}?`;
+            } else {
+                document.getElementById('msg-body').innerText = "DU BIST EIN MEISTER-PILOT! Alle Planeten erobert.";
+            }
+            messageBox.classList.remove('hidden');
+        }
+
+        function explode() {
+            ship.state = 'CRASHED';
+            document.getElementById('msg-title').innerText = "MISSION GESCHEITERT";
+            document.getElementById('msg-title').className = "text-4xl font-black mb-2 italic text-red-500";
+            document.getElementById('msg-body').innerText = "Aufprallgeschwindigkeit war zu hoch (> 3 m/s). Das Schiff wurde zerstört.";
+            messageBox.classList.remove('hidden');
+        }
+
+        function draw() {
+            // Hintergrund
+            ctx.fillStyle = levels[currentLevelIndex].bg;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Sterne (statisch)
+            ctx.fillStyle = "white";
+            for(let i=0; i<100; i++) {
+                let x = (Math.sin(i) * 0.5 + 0.5) * canvas.width;
+                let y = (Math.cos(i*i) * 0.5 + 0.5) * canvas.height;
+                ctx.globalAlpha = Math.random();
+                ctx.fillRect(x, y, 2, 2);
+            }
+            ctx.globalAlpha = 1;
+
+            // Boden
+            ctx.fillStyle = levels[currentLevelIndex].color;
+            ctx.fillRect(0, canvas.height - 100, canvas.width, 100);
+
+            // Plattform
+            ctx.fillStyle = "#1e293b";
+            ctx.strokeStyle = "#3b82f6";
+            ctx.lineWidth = 4;
+            ctx.strokeRect(ship.x - 50, canvas.height - 105, 100, 10);
+            ctx.fillRect(ship.x - 50, canvas.height - 105, 100, 10);
+
+            // Partikel
+            particles.forEach((p, i) => {
+                p.y += p.vy;
+                p.x += p.vx;
+                p.life -= 0.02;
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
+                ctx.fill();
+                if(p.life <= 0) particles.splice(i, 1);
+            });
+            ctx.globalAlpha = 1;
+
+            // Schiff & Vektoren
+            if (ship.state !== 'CRASHED') {
+                // Schiff
+                ctx.fillStyle = "white";
+                ctx.beginPath();
+                ctx.moveTo(ship.x, ship.y - 30);
+                ctx.lineTo(ship.x + 20, ship.y + 10);
+                ctx.lineTo(ship.x - 20, ship.y + 10);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Vektoren zeichnen (Physik-Visualisierung)
+                if (ship.state === 'FLYING') {
+                    // Gravitation (Rot nach unten)
+                    drawVector(ship.x + 40, ship.y, levels[currentLevelIndex].g * 10, "red", "Fg");
+                    // Schub (Blau nach oben)
+                    if (ship.isThrusting) {
+                        drawVector(ship.x - 40, ship.y, -ship.thrustForce/1500 * 10, "#3b82f6", "Fs");
+                    }
+                }
+            } else {
+                // Explosion
+                ctx.fillStyle = "orange";
+                ctx.beginPath();
+                ctx.arc(ship.x, ship.y, 40, 0, Math.PI*2);
+                ctx.fill();
+            }
+        }
+
+        function drawVector(x, y, magnitude, color, label) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x, y + magnitude);
+            ctx.stroke();
+            // Pfeilspitze
+            ctx.fillStyle = color;
+            ctx.fillText(label, x - 5, y + magnitude + (magnitude > 0 ? 15 : -10));
+        }
+
+        function gameLoop() {
+            updatePhysics();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Steuerung
+        window.addEventListener('keydown', e => { if(e.code === 'Space' || e.code === 'ArrowUp') ship.isThrusting = true; });
+        window.addEventListener('keyup', e => { if(e.code === 'Space' || e.code === 'ArrowUp') ship.isThrusting = false; });
+        window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
+
+        init();
+    </script>
+</body>
+</html>

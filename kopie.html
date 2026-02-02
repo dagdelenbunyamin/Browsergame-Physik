@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physik-Challenge: Mars Lander</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes flicker {
+            0%, 100% { opacity: 1; transform: scaleY(1); }
+            50% { opacity: 0.8; transform: scaleY(1.3); }
+        }
+        .thruster-fire {
+            animation: flicker 0.1s infinite;
+        }
+        canvas {
+            background: radial-gradient(circle at center, #1a202c 0%, #000 100%);
+            display: block;
+            margin: 0 auto;
+            border-bottom: 4px solid #4a5568;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-sans min-h-screen flex flex-col items-center p-4">
+
+    <header class="text-center mb-6">
+        <h1 class="text-4xl font-bold tracking-tight text-blue-400">Mars Lander <span class="text-gray-500 text-lg">v1.0</span></h1>
+        <p class="text-gray-400">Lande sanft (v < 3 m/s), um die Mission zu erfüllen!</p>
+    </header>
+
+    <div class="flex flex-col lg:flex-row gap-8 w-full max-w-6xl">
+        
+        <div class="flex-1 relative">
+            <canvas id="gameCanvas" width="600" height="500" class="rounded-lg shadow-2xl border border-gray-700"></canvas>
+            
+            <div class="absolute top-4 left-4 bg-black/60 p-4 rounded border border-blue-500/30 backdrop-blur-md">
+                <h3 class="text-xs font-bold uppercase text-blue-400 mb-2">Live Telemetrie</h3>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm font-mono">
+                    <span>Beschleunigung (a):</span> <span id="val-acc">0.00 m/s²</span>
+                    <span>Geschwindigkeit (v):</span> <span id="val-vel">0.00 m/s</span>
+                    <span>Höhe (y):</span> <span id="val-alt">0.00 m</span>
+                    <span>Treibstoff:</span> <span id="val-fuel">100 %</span>
+                </div>
+            </div>
+
+            <div class="absolute bottom-16 right-4 bg-gray-800/80 p-3 rounded text-[10px] italic text-gray-300">
+                <p>Physik-Engine:</p>
+                <p class="font-bold text-yellow-400">F_res = F_schub - (m * g)</p>
+                <p class="font-bold text-yellow-400">a = F_res / m</p>
+            </div>
+        </div>
+
+        <aside class="w-full lg:w-80 space-y-6">
+            <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+                <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <span>⚙️</span> Parameter
+                </h2>
+                
+                <div class="mb-4">
+                    <label class="block text-sm mb-1 text-gray-400">Gravitation (g): <span id="g-display" class="text-white font-bold">3.71</span> m/s²</label>
+                    <input type="range" id="input-g" min="1" max="20" step="0.1" value="3.71" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                    <p class="text-[10px] text-gray-500 mt-1">Mars: 3.71 | Erde: 9.81 | Mond: 1.62</p>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm mb-1 text-gray-400">Masse (m): <span id="m-display" class="text-white font-bold">1500</span> kg</label>
+                    <input type="range" id="input-m" min="500" max="5000" step="100" value="1500" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-green-500">
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-sm mb-1 text-gray-400">Max. Schub (F): <span id="f-display" class="text-white font-bold">25000</span> N</label>
+                    <input type="range" id="input-f" min="5000" max="50000" step="1000" value="25000" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-red-500">
+                </div>
+
+                <button id="btn-reset" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded transition duration-200">
+                    Mission Neustarten
+                </button>
+            </div>
+
+            <div class="bg-blue-900/30 p-4 rounded-xl border border-blue-800">
+                <h3 class="font-bold text-blue-300 mb-2 italic">Anleitung:</h3>
+                <p class="text-sm text-gray-300">Halte die <span class="bg-gray-700 px-2 rounded text-white italic text-xs">LEERTASTE</span> oder <span class="bg-gray-700 px-2 rounded text-white italic text-xs">PFEIL OBEN</span>, um die Triebwerke zu zünden.</p>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI Elemente
+        const gInput = document.getElementById('input-g');
+        const mInput = document.getElementById('input-m');
+        const fInput = document.getElementById('input-f');
+        const gDisplay = document.getElementById('g-display');
+        const mDisplay = document.getElementById('m-display');
+        const fDisplay = document.getElementById('f-display');
+        
+        const valAcc = document.getElementById('val-acc');
+        const valVel = document.getElementById('val-vel');
+        const valAlt = document.getElementById('val-alt');
+        const valFuel = document.getElementById('val-fuel');
+
+        // Spielstatus
+        let ship = {
+            x: 300,
+            y: 50,
+            velocity: 0,
+            acceleration: 0,
+            fuel: 100,
+            isThrusting: false,
+            crashed: false,
+            landed: false
+        };
+
+        // Konstanten & Skalierung
+        const PIXELS_PER_METER = 5; 
+        const DT = 0.016; // 60 FPS ca. 0.016s pro Frame
+
+        function updatePhysics() {
+            if (ship.crashed || ship.landed) return;
+
+            // 1. Parameter aus UI lesen
+            const g = parseFloat(gInput.value);
+            const mass = parseFloat(mInput.value);
+            const maxThrust = parseFloat(fInput.value);
+
+            // 2. Kräfte berechnen
+            let F_schub = 0;
+            if (ship.isThrusting && ship.fuel > 0) {
+                F_schub = maxThrust;
+                ship.fuel -= 0.1; // Treibstoffverbrauch
+            }
+
+            const F_gewicht = mass * g;
+            const F_res = F_schub - F_gewicht;
+
+            // 3. Newton: a = F / m
+            ship.acceleration = F_res / mass;
+
+            // 4. Bewegungsgleichungen
+            // v = v0 + a * dt (Geschwindigkeit wird nach unten positiv gezeichnet im Canvas, 
+            // daher invertieren wir die Logik für die Anzeige)
+            ship.velocity += -ship.acceleration * DT; 
+            ship.y += ship.velocity * PIXELS_PER_METER * DT;
+
+            // Telemetrie Anzeige (Invertierte v für logische Anzeige: Fallen = negativ)
+            valAcc.innerText = ship.acceleration.toFixed(2) + " m/s²";
+            valVel.innerText = (-ship.velocity).toFixed(2) + " m/s";
+            valAlt.innerText = Math.max(0, (450 - ship.y) / PIXELS_PER_METER).toFixed(1) + " m";
+            valFuel.innerText = Math.max(0, ship.fuel).toFixed(1) + " %";
+
+            // Kollisionsprüfung
+            if (ship.y >= 440) {
+                ship.y = 440;
+                // Erfolgskriterium: Geschwindigkeit klein genug?
+                if (Math.abs(ship.velocity) < 3) {
+                    ship.landed = true;
+                } else {
+                    ship.crashed = true;
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Sterne zeichnen
+            ctx.fillStyle = "white";
+            for(let i=0; i<20; i++) {
+                ctx.fillRect((i*37)%600, (i*23)%500, 1, 1);
+            }
+
+            // Landeplattform
+            ctx.fillStyle = "#4a5568";
+            ctx.fillRect(250, 460, 100, 10);
+            ctx.strokeStyle = "#63b3ed";
+            ctx.strokeRect(250, 460, 100, 10);
+
+            // Schiff zeichnen
+            ctx.save();
+            ctx.translate(ship.x, ship.y);
+
+            // Triebwerk-Feuer
+            if (ship.isThrusting && ship.fuel > 0 && !ship.landed && !ship.crashed) {
+                ctx.fillStyle = "#f6e05e";
+                ctx.beginPath();
+                ctx.moveTo(-10, 15);
+                ctx.lineTo(0, 35 + Math.random() * 10);
+                ctx.lineTo(10, 15);
+                ctx.fill();
+            }
+
+            // Schiffskörper
+            ctx.fillStyle = ship.crashed ? "#f56565" : (ship.landed ? "#48bb78" : "#e2e8f0");
+            ctx.beginPath();
+            ctx.moveTo(0, -20);
+            ctx.lineTo(15, 15);
+            ctx.lineTo(-15, 15);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Cockpit
+            ctx.fillStyle = "#63b3ed";
+            ctx.beginPath();
+            ctx.arc(0, -5, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+
+            // Status Text
+            if (ship.crashed) {
+                ctx.fillStyle = "#f56565";
+                ctx.font = "bold 30px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("MISSION GESCHEITERT!", 300, 250);
+                ctx.font = "16px Arial";
+                ctx.fillText("Aufprall zu hart: " + Math.abs(ship.velocity).toFixed(2) + " m/s", 300, 280);
+            }
+            if (ship.landed) {
+                ctx.fillStyle = "#48bb78";
+                ctx.font = "bold 30px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("ERFOLGREICH GELANDET!", 300, 250);
+                ctx.font = "16px Arial";
+                ctx.fillText("Perfektes Timing!", 300, 280);
+            }
+        }
+
+        function gameLoop() {
+            updatePhysics();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Steuerung
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') ship.isThrusting = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') ship.isThrusting = false;
+        });
+
+        // UI Updates
+        gInput.oninput = () => gDisplay.innerText = gInput.value;
+        mInput.oninput = () => mDisplay.innerText = mInput.value;
+        fInput.oninput = () => fDisplay.innerText = fInput.value;
+
+        document.getElementById('btn-reset').onclick = () => {
+            ship = { x: 300, y: 50, velocity: 0, acceleration: 0, fuel: 100, isThrusting: false, crashed: false, landed: false };
+        };
+
+        gameLoop();
+    </script>
+</body>
+</html>
