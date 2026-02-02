@@ -1,65 +1,66 @@
-============================================================
-PROJEKT-DOKUMENTATION: SOLAR LANDER PRO (PHYSICS EDITION)
-============================================================
+# 🚀 Solar Lander Pro (Physics Edition)
 
-1. PHYSIKALISCHE GRUNDLAGEN
-Das Spiel basiert auf der klassischen Mechanik Newtons, erweitert auf 
-ein zweidimensionales Koordinatensystem (x und y).
+![Version](https://img.shields.io/badge/Version-1.0.0-blue)
+![Physics](https://img.shields.io/badge/Engine-Newtonian_Mechanics-orange)
+![Year](https://img.shields.io/badge/Year-2026-brightgreen)
 
-A) Vertikale Bewegung (y-Achse):
-Hier wirkt das Kräftegleichgewicht zwischen Schubkraft (F_s) und 
-Gewichtskraft (F_g).
-Formel: F_net_y = F_schub_y - (m * g)
-Beschleunigung: a_y = F_net_y / m
+Ein interaktiver Flugsimulator zur Veranschaulichung der klassischen Mechanik in einem zweidimensionalen Koordinatensystem. Entwickelt als Physik-Projekt für die Oberstufe.
 
-B) Horizontale Bewegung (x-Achse):
-Hier wird die Trägheit bei seitlicher Beschleunigung simuliert.
-Formel: F_net_x = F_schub_x
-Beschleunigung: a_x = F_net_x / m
+---
 
-C) Integration (Euler-Verfahren):
-In jedem Frame (dt ≈ 1/60s) werden die Werte aktualisiert:
-v_neu = v_alt + a * dt
-s_neu = s_alt + v * dt
+## 🌌 Physikalische Grundlagen
 
+Das Spiel simuliert die Bewegung eines Landers unter Einfluss von Gravitation und Schubkraft mittels **Euler-Integration**.
 
+### A) Vektorgleichungen
+Die Gesamtbeschleunigung ergibt sich aus der Summe der wirkenden Kräfte:
 
-2. REALISMUS & VEREINFACHUNGEN
-Um den Spielspaß mit dem Lerneffekt zu kombinieren, wurden folgende 
-Annahmen getroffen:
-- Vakuum-Simulation: Kein Luftwiderstand, was für Mond und Mars 
-  physikalisch korrekt ist.
-- 2D-Translation: Das Schiff bleibt senkrecht orientiert, um den 
-  Fokus auf die Vektorberechnung der Kräfte zu legen.
-- Diskrete Kollision: Der Aufprall wird als unelastischer Stoß 
-  gewertet. Übersteigt der Impuls beim Aufprall einen Grenzwert 
-  (v > 3 m/s), führt die kinetische Energie zur Zerstörung.
+$$F_{net} = \sum F = F_{Schub} + F_{Gravitation}$$
 
-3. INTERAKTIVE PARAMETER & LERNELEMENTE
-Der "Pro"-Lander ermöglicht das Erforschen verschiedener Szenarien:
-- Ortsfaktor (g): Variiert je nach Level (Mond: 1.62, Mars: 3.71, 
-  Erde: 9.81 m/s²). Der Spieler spürt direkt die Auswirkung der 
-  Gravitation auf die benötigte Gegenkraft.
-- Treibstoff-Management: Die begrenzte Ressource erzwingt eine 
-  effiziente Flugbahn (Optimierungsproblem).
-- Vektor-Analyse: Das HUD zeigt Geschwindigkeiten in x- und y-Richtung 
-  getrennt an, was das Verständnis für unabhängige Bewegungs-
-  komponenten (Superpositionsprinzip) schärft.
+Aufgeteilt in Komponenten:
+* **Vertikal (y-Achse):** $a_y = \frac{F_{Schub,y} - (m \cdot g)}{m}$
+* **Horizontal (x-Achse):** $a_x = \frac{F_{Schub,x}}{m}$
 
-4. TECHNISCHE UMSETZUNG
-- Rendering: HTML5 Canvas API für flüssige 60-FPS-Grafik.
-- UI/Design: Tailwind CSS für ein modernes, responsives HUD.
-- Audio: Web Audio API zur dynamischen Erzeugung von Triebwerks-
-  geräuschen basierend auf Oszillatoren (keine externen Samples).
-- Partikel-System: Simulation von Abgasstrahlen zur Visualisierung 
-  der Kraftrichtung.
+### B) Numerische Integration
+In jedem Frame ($dt \approx \frac{1}{60}s$) werden die Bewegungszustände diskret aktualisiert:
+1.  **Geschwindigkeit:** $v_{neu} = v_{alt} + a \cdot dt$
+2.  **Position:** $s_{neu} = s_{alt} + v \cdot dt$
 
-5. STEUERUNG
-- [LEERTASTE / PFEIL OBEN]: Haupttriebwerk (Vertikaler Schub)
-- [PFEIL LINKS / RECHTS]: Steuerdüsen (Horizontaler Schub)
-- Ziel: Landung auf der markierten Plattform mit v_y < 3.0 m/s 
-  und v_x < 2.0 m/s.
+---
 
-============================================================
-Entwickelt als Physik-Projekt (Oberstufe) - 2026
-============================================================
+## 🛠 Realismus & Vereinfachungen
+
+Um den Fokus auf die **Vektormechanik** zu legen, wurden gezielte Annahmen getroffen:
+
+* **Vakuum-Simulation:** Verzicht auf Luftwiderstand (entsprechend der Atmosphäre von Mond oder Mars).
+* **Impuls-Grenzwerte:** Die strukturelle Integrität ist an die kinetische Energie gekoppelt. Eine erfolgreiche Landung erfordert:
+    * $v_y < 3.0 \, \text{m/s}$
+    * $v_x < 2.0 \, \text{m/s}$
+* **Superpositionsprinzip:** Horizontale und vertikale Bewegungen werden unabhängig voneinander berechnet und im HUD separat visualisiert.
+
+---
+
+## 🎮 Features & Steuerung
+
+-   **Variable Gravitation:** Erforsche unterschiedliche Ortsfaktoren $g$ (Mond: $1.62$, Mars: $3.71$, Erde: $9.81 \, \text{m/s}^2$).
+-   **Treibstoff-Optimierung:** Begrenzte Ressourcen zwingen zur effizienten Berechnung der Flugbahn.
+-   **Prozedurales Audio:** Dynamische Triebwerksgeräusche via Web Audio API (Oszillatoren).
+
+### Steuerung
+| Taste | Aktion |
+| :--- | :--- |
+| `Leertaste` / `↑` | Haupttriebwerk (Vertikaler Schub) |
+| `←` / `→` | Steuerdüsen (Horizontaler Schub) |
+
+---
+
+## 💻 Technischer Stack
+
+* **Core:** HTML5 Canvas API (60 FPS Rendering)
+* **Styling:** Tailwind CSS (Modernes HUD Design)
+* **Audio:** Web Audio API (Synthetische Klangerzeugung)
+* **Versionierung:** Git / GitHub
+
+---
+
+> **Projektkontext:** Dieses Programm entstand im Rahmen des Physik-Unterrichts (2026) zur Demonstration von zweidimensionaler Kinematik.
